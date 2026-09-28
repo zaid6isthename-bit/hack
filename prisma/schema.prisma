@@ -1,0 +1,208 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("STUDENT")
+  departmentId String?
+  title        String?
+  createdAt    DateTime @default(now())
+
+  reports       Report[]
+  incidents     Incident[]       @relation("AssignedStaff")
+  comments      Comment[]
+  attachments   Attachment[]
+  history       HistoryEntry[]
+  notifications Notification[]
+  resolutions   Resolution[]
+  department    Department?      @relation(fields: [departmentId], references: [id])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  color       String   @default("#6366f1")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  users     User[]
+  incidents Incident[]
+}
+
+model Location {
+  id       String  @id @default(cuid())
+  building String
+  floor    String  @default("")
+  room     String  @default("")
+  critical Int     @default(1)
+  mapX     Float   @default(50)
+  mapY     Float   @default(50)
+
+  reports   Report[]
+  incidents Incident[]
+
+  @@unique([building, floor, room])
+}
+
+model Report {
+  id            String   @id @default(cuid())
+  reportNumber  Int      @unique
+  userId        String
+  incidentId    String?
+  description   String
+  imageUrl      String?
+  locationId    String?
+  aiSummary     String   @default("")
+  aiCategory    String   @default("")
+  aiSubcategory String   @default("")
+  aiSeverity    String   @default("Medium")
+  aiRisk        String   @default("")
+  aiDepartment  String   @default("")
+  aiConfidence  Float    @default(0)
+  aiStatus      String   @default("ok")
+  joined        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  incident Incident? @relation(fields: [incidentId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+}
+
+model Incident {
+  id              String    @id @default(cuid())
+  incidentNumber  Int       @unique
+  title           String
+  description     String
+  category        String
+  subcategory     String    @default("")
+  priority        String    @default("Medium")
+  priorityScore   Float     @default(0)
+  severity        String    @default("Medium")
+  risk            String    @default("")
+  status          String    @default("REPORTED")
+  departmentId    String?
+  assignedStaffId String?
+  locationId      String?
+  affectedUsers   Int       @default(10)
+  duplicateCount  Int       @default(1)
+  confidence      Float     @default(0)
+  suggestedAction String    @default("")
+  suggestedSteps  String    @default("")
+  escalationLevel Int       @default(0)
+  reopenCount     Int       @default(0)
+  mergedIntoId    String?
+  slaDeadline     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+
+  reports       Report[]
+  comments      Comment[]
+  attachments   Attachment[]
+  history       HistoryEntry[]
+  resolutions   Resolution[]
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  assignedStaff User?          @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+  location      Location?      @relation(fields: [locationId], references: [id])
+  mergedInto    Incident?      @relation("MergeTree", fields: [mergedIntoId], references: [id])
+  mergedChildren Incident[]    @relation("MergeTree")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  incidentId String
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  incidentId String?
+  reportId   String?
+  uploadedBy String
+  kind       String   @default("evidence")
+  url        String
+  caption    String   @default("")
+  createdAt  DateTime @default(now())
+
+  incident Incident? @relation(fields: [incidentId], references: [id])
+  uploader User     @relation(fields: [uploadedBy], references: [id])
+}
+
+model HistoryEntry {
+  id          String   @id @default(cuid())
+  incidentId  String
+  action      String
+  performedBy String?
+  oldValue    String   @default("")
+  newValue    String   @default("")
+  timestamp   DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  actor    User?    @relation(fields: [performedBy], references: [id])
+}
+
+model Resolution {
+  id                 String   @id @default(cuid())
+  incidentId         String
+  createdById        String
+  description        String
+  resolutionImage    String?
+  aiAppearsResolved  Boolean?
+  aiVerificationNote String   @default("")
+  studentConfirmed   String?
+  createdAt          DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  incidentId String?
+  type      String   @default("info")
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model SlaRule {
+  id       String @id @default(cuid())
+  priority String @unique
+  hours    Int    @default(24)
+}
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
+
+model AiConfig {
+  id                Int     @id @default(1)
+  weightSeverity    Float   @default(40)
+  weightSafety      Float   @default(25)
+  weightAffected    Float   @default(15)
+  weightLocation    Float   @default(10)
+  weightDuplicates  Float   @default(10)
+  confidenceFloor   Float   @default(0.55)
+  duplicateThreshold Float  @default(0.62)
+}
